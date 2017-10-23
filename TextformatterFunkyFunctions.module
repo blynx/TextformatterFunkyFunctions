@@ -1,0 +1,393 @@
+<?php namespace ProcessWire;
+
+class TextformatterFunkyFunctions extends Textformatter implements ConfigurableModule {
+    
+    /**
+     * getModuleInfo is a module required by all modules to tell ProcessWire about them
+     *
+     * @return array
+     *
+     */
+    public static function getModuleInfo() {
+
+        return array(
+            'title' => 'Funky Functions',
+            'version' => '0.5.0',
+            'summary' => 'Funky?',
+            'href' => 'http://www.steffenhenschel.com',
+            'author' => 'Steffen Henschel'
+            );
+    }
+
+    /**
+     * isSingular
+     * 
+     * Hack: override standard Textformatter method to allow multiple instances
+     * (loading as API variable as well as adding to textformatters list on texfields)
+     *
+     * @return boolean
+     */
+    public function isSingular() {
+        return false;
+    }
+
+    /**
+     * Data as used by the get/set functions
+     *
+     */
+    protected $data = array();
+
+
+
+    /**
+     * getDefaultConfig
+     *
+     * define and return default configuration
+     * 
+     * @return array
+     */
+    static public function getDefaultConfig() {
+		return array(
+			'leftBrace'         => '[[',
+            'rightBrace' 		=> ']]',
+            'functionsFolder'   => 'templates/funkys',
+            'useAccessOffset'   => true
+			);
+	}
+
+    /**
+     * constructor
+     *
+     */
+    public function __construct() {
+        foreach(self::getDefaultConfig() as $key => $value) {
+			$this->$key = $value;
+        }
+    }
+
+
+
+
+    /**
+     * Text formatting function as used by the Textformatter interface
+     *
+     */
+    public function format(&$str) {
+
+        if (isset($this->data)) {
+            // perform a strpos fast check before performing regex check
+            if (strpos($str, $this->leftBrace) !== false) $this->runFunctions($str);
+        }
+    }
+    
+    
+    
+    /**
+     * runFunctions
+     * 
+     * search for snippets/functions
+     *
+     * @param [type] $str
+     * @return void
+     */
+    protected function runFunctions(&$str) {
+
+        // find and collect funky function tags
+
+        $funkyMatches = [];
+
+        // capture funky function tags
+        preg_match_all("/" . preg_quote($this->leftBrace) . "([a-zA-Z0-9\_\-\.]+)(?:.*)" . preg_quote($this->rightBrace) . "/m", $str, $funkyMatches);
+
+        // exit if nothing is found
+        if(!isset($funkyMatches[0][0])) {
+            return;
+        } 
+
+        $wholeFunctionMatches   = $funkyMatches[0];
+        $functions              = $funkyMatches[1];
+
+        // prepare environment variables
+
+        $page = wire('page');
+        $pageTemplateName = $page->template->name;
+        $sitePath = wire('config')->paths->root . 'site/';
+        $fieldsPath = $sitePath . 'templates/fields';
+        $funkyPath = $sitePath . ltrim($this->functionsFolder, '/');
+
+        // lets go; for each function ...
+        
+        foreach ($functions as $i => $funkyName) {
+
+            $funkyFunctionIsField = false;
+            $funkyScriptFile = '';
+            $fieldScriptFile = '';
+
+            // Check if funkyFunction is a field. Yes, goto ...
+            // ... and find corresponding script files
+
+            if($page->hasField($funkyName)) {
+                $funkyFunctionIsField = true;
+                if(is_file($fieldScriptFile = "$fieldsPath/$funkyName/$pageTemplateName.php")) goto findFunkyScript;
+                if(is_file($fieldScriptFile = "$fieldsPath/$funkyName.$pageTemplateName.php")) goto findFunkyScript;
+                if(is_file($fieldScriptFile = "$fieldsPath/$pageTemplateName/$funkyName.php")) goto findFunkyScript;
+                if(is_file($fieldScriptFile = "$fieldsPath/$funkyName.php")) goto findFunkyScript;
+                $fieldScriptFile = '';
+            }
+            
+            findFunkyScript:
+
+            if(is_file($funkyScriptFile = "$funkyPath/$funkyName/$pageTemplateName.php")) goto goOn;
+            if(is_file($funkyScriptFile = "$funkyPath/$funkyName.$pageTemplateName.php")) goto goOn;
+            if(is_file($funkyScriptFile = "$funkyPath/$pageTemplateName/$funkyName.php")) goto goOn;
+            if(is_file($funkyScriptFile = "$funkyPath/$funkyName.php")) goto goOn;
+            $funkyScriptFile = '';
+            
+            goOn:
+
+            if(!$fieldScriptFile && !$funkyScriptFile) {
+                user_error("No script file was found for \"$funkyName\". Current search folders: \"{$this->functionsFolder}/...\" and \"templates/fields/...\". Funky tag was removed.");
+                
+                // remove unused tag
+                $str = str_replace($wholeFunctionMatches[$i], '', $str);
+                continue;
+            }
+
+            // extract arguments from whole functions match. 
+            // Including funky functions name as argument itself
+            // since it can be a field to provide data, too
+            $funkyArgMatches = [];
+
+            #0               #1             #=   #2          #3                                 #4 
+            // preg_match_all("/([a-zA-Z0-9-_]+)=(?:([0-9,\-]+)|((?:"|')?(?:[^\"\'].*)(?:\"|\'))|([a-zA-Z0-9_\-]+))?/", $wholeFunctionMatches[$i], $funkyArgMatches);
+            preg_match_all("/([a-zA-Z0-9-_]+)=?(?:([0-9,\-]+)|((?:\"|')?(?:[^\"'].*)(?:\"|'))|([a-zA-Z0-9_\-]+))?/", $wholeFunctionMatches[$i], $funkyArgMatches);
+            // old: preg_match_all("/([a-zA-Z0-9-_]+)=(?:\"|')?([a-zA-Z0-9-_]+)(?:\"|')?/m", $wholeFunctionMatches[$i], $funkyArgMatches);
+
+            $argWholeMatches    = $funkyArgMatches[0];
+            $argNames           = $funkyArgMatches[1];
+            $argVals_AccessStr  = $funkyArgMatches[2];  //  "access string" like 1,3,4,7-12
+            $argVals_StringLit  = $funkyArgMatches[3];  //  string literal like "a string in quotes"
+            $argVals_SimpleStr  = $funkyArgMatches[4];  //  simple string as in page or html class names like "one-word_string"
+
+            foreach($argNames as $j => $argName) {
+                
+                $funkyArguments[$argName] = null;
+                $argumentIsField = $page->hasField($argName) ? true : false;
+
+                // literal string?
+
+                if($argVals_StringLit[$j]) {
+                    // remove first and last character ("any quotes')
+                    $funkyArguments[$argName] = substr(substr($argVals_StringLit[$j], 0, strlen($argVals_StringLit[$j])), 1);
+                    continue;
+                }
+
+                // simple string
+
+
+                if($argVals_SimpleStr[$j]) {
+                    $funkyArguments[$argName] = $argVals_SimpleStr[$j];
+                    continue;
+                }
+                
+                // field with access string
+
+                if($argVals_AccessStr[$j] && $argumentIsField) {
+                    $pageFieldValue = $page->$argName;
+                    $accessStr = trim($argVals_AccessStr[$j], ',');
+                    if(gettype($pageFieldValue) === 'array' || $pageFieldValue instanceof WireArray) {
+                        $funkyArguments[$argName] = $this->filterByIndices($pageFieldValue, $accessStr);
+                    }
+                    continue;
+                }
+
+                // field without access string
+
+                if(!$argVals_AccessStr[$j] && $argumentIsField) {
+                    $funkyArguments[$argName] = $page->$argName;
+                    continue;
+                }
+            }
+
+            // supply value parameter if funky function is also a field of page
+            if($funkyFunctionIsField) {
+                $funkyArguments['value'] = $page->$funkyName;
+            }
+
+            // suppy itself by reference for "arguments" key
+            $funkyArguments['arguments'] = $funkyArguments;
+
+            // choose file to render, prefer funky file
+            $renderFile = $funkyScriptFile ?: $fieldScriptFile;
+
+            $out = "";
+            $out = $this->renderMarkup($renderFile, $funkyArguments, false);
+            $str = str_replace($wholeFunctionMatches[$i], $out, $str);
+        }
+    }
+
+
+
+    /**
+     * render
+     * 
+     * hookable render function to allow override for templating engines, etc ...
+     * 
+     * @return string
+     */
+    public function ___renderMarkup($funkyScriptFile, $funkyArguments, $override = false) {
+        
+        if($override === false) {
+            $out = wire('files')->render($funkyScriptFile, $funkyArguments);
+        }
+
+        return $out;
+    }
+
+
+    /**
+     * filterByIndices
+     * 
+     * helper to filter array like objects and arrays by given indices
+     * 
+     * @param mixed     $arrayLike  an array or WireArrray derived object
+     * @param string    $indices    a comma separated list like "1,2,3,6-9"
+     * 
+     * @return mixed
+     */
+    private function filterByIndices($arrayLike, $indices) {
+        
+        $arrayCount = $arrayLike->count ?: count($arrayLike);
+
+        // prepare indices string, expand given ranges (eg. 4-35)
+        $indices = explode(',', $indices);
+        $newIndices = [];
+        foreach ($indices as $k => $index) {
+            if(strpos($index, '-') !== false) {
+                // expand ranges
+                $range = explode('-', $index);
+                $from = intval($range[0] === '' ? 1 : $range[0]);
+                $to =  intval($range[1] === '' ? $arrayCount : $range[1]);
+                $n = $to - $from;
+                for($i = 0; $i <= $n; $i++) {
+                    $newIndices[] = intval($from + $i);
+                }
+            } else {
+                $newIndices[] = intval($index);
+            }
+        }
+        // apply "access offset"
+        if($this->useAccessOffset) {
+            foreach($newIndices as $i => $indexVal) {
+                 $newIndices[$i] = --$indexVal;
+            }
+        }
+        // remove duplicates
+        $newIndices = array_unique($newIndices);
+
+        $newArray = null;
+
+        // return for WireArray derived
+
+        if($arrayLike instanceof WireArray) {
+            $newArray = $arrayLike->makeNew();
+        } elseif($arrayLike instanceof WireData) {
+            $newArray = new WireData();
+        } else {
+            $newArray = [];
+            foreach ($newIndices as $key => $index) {
+                $newArray[] = $arrayLike[$index];
+            }
+            return $newArray;
+        }
+
+        // else, return for std array
+
+        foreach ($newIndices as $key => $index) {
+            $newArray->add($arrayLike->eq($index));
+        }
+        return $newArray;
+    }
+
+
+
+    /**
+     * Module configuration screen
+     *
+     */
+    public static function getModuleConfigInputfields(array $data) {
+
+        $modules = wire('modules');
+        
+        $defaults = self::getDefaultConfig();
+        $data = array_merge($defaults, $data);
+
+        // this is a container for fields, basically like a fieldset
+        $form = new InputfieldWrapper();
+
+        $field = $modules->get("InputfieldText");
+        $field->name = "leftBrace";
+        $field->label = __("Opening brace");
+        $field->description = __("");
+        $field->value = $data['leftBrace'];
+        $field->checked = $data['leftBrace'];
+        $field->with = 50;
+        $form->add($field);
+
+        $field = $modules->get("InputfieldText");
+        $field->name = "rightBrace";
+        $field->label = __("Closing brace");
+        $field->description = __("");
+        $field->value = $data['rightBrace'];
+        $field->checked = $data['rightBrace'];
+        $field->with = 50;
+        $form->add($field);
+
+        $field = $modules->get("InputfieldText");
+        $field->name = "functionsFolder";
+        $field->label = __("Default folder for funky functions");
+        $field->description = __("");
+        $field->value = $data['functionsFolder'];
+        $field->checked = $data['functionsFolder'];
+        $field->with = 50;
+        $form->add($field);
+
+        $field = $modules->get("InputfieldCheckbox");
+        $field->name = "useAccessOffset";
+        $field->label = __("Access Offset");
+        $field->description = __("When accessing items of field data: If checked, access index starts at 1 instead of 0");
+        $field->notes = __("default: checked");
+        $field->value = $data['useAccessOffset'];
+        $field->checked = $data['useAccessOffset'];
+        $field->with = 50;
+        $form->add($field);
+
+        return $form;	
+    }
+
+    /**
+     * The following functions are to support the ConfigurableModule interface
+     * since Textformatter does not originate from WireData
+     *
+     */
+
+    public function set($key, $value) {
+        $this->data[$key] = $value; 
+        return $this;
+    }
+
+    public function get($key) {
+        $value = Wire::getFuel($key); 
+        if($value) return $value; 
+        return isset($this->data[$key]) ? $this->data[$key] : null;
+    }
+
+    public function __set($key, $value) {
+        $this->set($key, $value); 
+    }
+
+    public function __get($key) {
+        return $this->get($key);
+    }
+
+}
