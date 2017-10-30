@@ -46,16 +46,12 @@ This will render the script `images.php` from the detected scripts folder and pu
 
 Then, add this Textformatter in the details tab of the desired Textfield.
 
-
-## Todo
-- ability to spread values from single field over multiple parameters
-
 ## Changelog
 
-### 1.0 - 2017/10/30, refactoring, added ability to filter by processwie selectors, pull data from
+#### 1.0 - 2017/10/30, refactoring, added ability to filter by processwie selectors, pull data from
 
 added: ability to filter field values by processwire selectors  
-added: ability to pull data from page fields into attributes
+added: ability to pull data from page fields into attributes  
 other: refactoring
 
-### 0.x - 2017/10/23, Initial release
+#### 0.x - 2017/10/23, Initial release

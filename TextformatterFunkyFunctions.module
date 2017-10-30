@@ -19,7 +19,7 @@ class TextformatterFunkyFunctions extends Textformatter implements ConfigurableM
 
         return array(
             'title' => 'Funky Functions',
-            'version' => '0.6',
+            'version' => '1.0.0',
             'summary' => 'Textformatter to create custom tags',
             'href' => 'http://www.steffenhenschel.com',
             'author' => 'Steffen Henschel'
