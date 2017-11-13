@@ -26,7 +26,7 @@ It is not (yet?) in the modules directory. Thus, I don't provide any support, bu
 [[nice-gallery images=1,2,3,6- type=special-kind]]
 ```
 This will render the script `nice-gallery.php` with the variables `$images` and `$type`.  
-Value of `$type` will be `"special-kind"`, value of `$images` will be items 1, 2, 3 and all the rest from item 6 up to the end of the images field of the page.
+Value of `$type` will be `"special-kind"`, value of `$images` will be items 1, 2, 3 and all the rest from item 6 up to the end of the images field of that name of the page.
 A variable `$arguments` is also provided with all “arguments”/variables bundled.
 
 ```
@@ -48,10 +48,23 @@ Then, add this Textformatter in the details tab of the desired Textfield.
 
 ## Changelog
 
+#### 1.2.0 - 2017/11/13, fixes
+
+added: Also matches field references inside unquoted attribute values.  
+fix: Fetch correct values if attribute name and attriute values field reference are the same (Always fetch value field reference).  
+
+#### 1.1.0 - 2017/11/3, added render function
+
+added: A render function.
+
+#### 1.0.1 - 2017/10/31, fixed bug in regex
+
+fixed: Greedy bug in regex.
+
 #### 1.0 - 2017/10/30, refactoring, added ability to filter by processwie selectors, pull data from
 
-added: ability to filter field values by processwire selectors  
-added: ability to pull data from page fields into attributes  
-other: refactoring
+added: Ability to filter field values by processwire selectors  
+added: Ability to pull data from page fields into attributes  
+other: Refactoring
 
 #### 0.x - 2017/10/23, Initial release

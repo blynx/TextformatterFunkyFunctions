@@ -19,8 +19,8 @@ class TextformatterFunkyFunctions extends Textformatter implements ConfigurableM
 
         return array(
             'title' => 'Funky Functions',
-            'version' => '1.0.0',
-            'summary' => 'Textformatter to create custom tags',
+            'version' => '1.2.0',
+            'summary' => 'Textformatter to create custom tags.',
             'href' => 'http://www.steffenhenschel.com',
             'author' => 'Steffen Henschel'
             );
@@ -79,6 +79,8 @@ class TextformatterFunkyFunctions extends Textformatter implements ConfigurableM
 
 
     /**
+     * format
+     * 
      * Text formatting function as used by the Textformatter interface
      *
      */
@@ -88,6 +90,22 @@ class TextformatterFunkyFunctions extends Textformatter implements ConfigurableM
             // perform a strpos fast check before performing regex check
             if (strpos($str, $this->leftBrace) !== false) $this->processTags($str);
         }
+    }
+
+
+
+    /**
+     * render
+     * 
+     * render function which returns the output string
+     *  use in template or whereever
+     *
+     * @param string    $str    any string which is suppoesed to contain a valid funky tag
+     * @return string           output
+     */
+    public function ___render($str) {
+        $this->format($str);
+        return $str;
     }
 
 
@@ -118,7 +136,7 @@ class TextformatterFunkyFunctions extends Textformatter implements ConfigurableM
             
             // find tag attributes
             $tagAttrMatches = [];
-            preg_match_all("/([a-zA-Z0-9\-\_]+)=(?:([0-9a-zA-Z\-\,]+)|((?:\"(?:.*)\")|(?:\'(?:.+)\')))/m", $tagContent, $tagAttrMatches);
+            preg_match_all("/([a-zA-Z0-9\-\_]+)=(?:([0-9a-zA-Z\-\,\:]+)|((?:\"(?:.*?)\")|(?:\'(?:.*?)\')))/m", $tagContent, $tagAttrMatches);
             $attrNames = $tagAttrMatches[1];
             $attrSimpleVals = $tagAttrMatches[2];
             $attrQuotedVals = $tagAttrMatches[3];
@@ -126,36 +144,17 @@ class TextformatterFunkyFunctions extends Textformatter implements ConfigurableM
             foreach($attrNames as $j => $attrName) {
                 
                 $attrValue = null;
-                // $attrIsField = $page->has($attrName);
-                // $attrFieldValue = $page->get($attrName);
-                // $attrFieldValueFilterResult = null;
 
                 if($attrSimpleVals[$j]) {
                     $valueProbe = $attrSimpleVals[$j];
+                    bd("$attrName --- $valueProbe");
                     $attrValue = $this->pullAnyValue($page, $attrName, $valueProbe, ['simple' => true]);
                 } elseif($attrQuotedVals[$j]) {
                     $valueProbe = $attrQuotedVals[$j];
+                    bd("$attrName --- $valueProbe");
                     $attrValue = $this->pullAnyValue($page, $attrName, $valueProbe, ['quoted' => true]);
                 }
 
-
-                // if($attrSimpleVals[$j]) {
-                //     $attrValue = $attrSimpleVals[$j];
-                //     if($attrIsField) {
-                //         $attrFieldValueFilterResult = $this->filterByIndices($attrFieldValue, $attrValue);
-                //     }
-                // } elseif($attrQuotedVals[$j]) {
-                //     // remove first and last character (any ' " quotes)
-                //     $attrValueStrLen = strlen($attrQuotedVals[$j]);
-                //     $attrValue = substr($attrQuotedVals[$j], 1, $attrValueStrLen - 2);
-                //     if($attrIsField) {
-                //         $attrFieldValueFilterResult = $this->filterBySelector($attrFieldValue, $attrValue);
-                //     }
-                // }
-                
-                // $attrValue = ($attrFieldValueFilterResult === null) ? $attrValue : $attrFieldValueFilterResult;
-
-                // finally
                 $tagAttributesAndValues[$attrName] = $attrValue;
             }
 
@@ -282,14 +281,15 @@ class TextformatterFunkyFunctions extends Textformatter implements ConfigurableM
                 $newIndices[] = intval($index);
             }
         }
+        // remove duplicates
+        $newIndices = array_unique($newIndices);
         // apply "access offset"
+        // ~> "array=1,2,3" to array=0,1,2
         if($this->useAccessOffset) {
             foreach($newIndices as $i => $indexVal) {
                  $newIndices[$i] = --$indexVal;
             }
         }
-        // remove duplicates
-        $newIndices = array_unique($newIndices);
 
         $newArray = null;
 
@@ -351,10 +351,10 @@ class TextformatterFunkyFunctions extends Textformatter implements ConfigurableM
      * 
      * @param [type] $page
      * @param [type] $fieldName
-     * @param [type] $filter
+     * @param [type] $probe aka filter/selector/...
      * @return void
      */
-    private function pullAnyValue($page, $fieldName, $probe, $options = []) {
+    private function pullAnyValue($page, $attrName, $probe, $options = []) {
         
         // merge helper options
         $defaults = ['quoted' => false, 'simple' =>  false, 'inner' => false];
@@ -368,38 +368,36 @@ class TextformatterFunkyFunctions extends Textformatter implements ConfigurableM
 
         // * //
 
-        // 1 // field does not exist --> test for inner field reference
+        // 1 // attribute name is field? attribute value has inner field reference?
+        
+        $fieldExists = $page->hasField($attrName);
+        $innerFieldReference = $this->getInnerFieldReference($page, $probe);
+        $valueProbe = null;
 
-        $fieldExists = $page->hasField($fieldName);
-        $fieldValue = null;
-        if($fieldExists === false) {
-
-            // 1.1 // filter has inner field reference? --> recursion, pullFieldValue next level
-
-            $innerFieldReference = $this->getInnerFieldReference($page, $probe);
-            if($innerFieldReference === null) {
-                // field and inner field do not exist
-                // --> return probe since there is nothing to pull
-                return $probe;
-            } else {
-                return $this->pullAnyValue($page, $innerFieldReference[0], $innerFieldReference[1], ['inner' => true]);
-            }
-        } else {
-            // get field value for further filter trials
-            $fieldValue = $page->get($fieldName);
+        // 1.1 // If there is an inner field reference, just return this one. Priority.
+        if($innerFieldReference !== null) {
+            return $this->pullAnyValue($page, $innerFieldReference[0], $innerFieldReference[1], ['inner' => true]);
         }
+
+        // 1.2 // If the attribute name does not correspond to a field, just return the value probe.
+        if($fieldExists === false) {
+            return $probe;
+        } 
+        
+        // else // get field value for further filter trials
+        $valueProbe = $page->get($attrName);
         
         // 2 // probe matches "access-indices pattern" like "1,2,5-7,10,14-" --> filter by indices, return value
         
         $accessIndices = [];
         preg_match("/(?:[0-9\-],?)+/", $probe, $accessIndices);
         if(isset($accessIndices[0]) && $accessIndices[0] == $probe) {
-            return $this->filterByIndices($fieldValue, $probe);
+            return $this->filterByIndices($valueProbe, $probe);
         }
         
         // 4 // no data? assume probe is selector --> filter by selector, value? return value
         
-        $fieldValueBySelector = $this->filterBySelector($fieldValue, $probe);
+        $fieldValueBySelector = $this->filterBySelector($valueProbe, $probe);
         if($fieldValueBySelector === null) {
             // go on, assume probe is an actual value
         } else {
