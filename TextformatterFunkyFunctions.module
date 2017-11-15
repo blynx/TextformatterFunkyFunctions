@@ -147,11 +147,9 @@ class TextformatterFunkyFunctions extends Textformatter implements ConfigurableM
 
                 if($attrSimpleVals[$j]) {
                     $valueProbe = $attrSimpleVals[$j];
-                    bd("$attrName --- $valueProbe");
                     $attrValue = $this->pullAnyValue($page, $attrName, $valueProbe, ['simple' => true]);
                 } elseif($attrQuotedVals[$j]) {
                     $valueProbe = $attrQuotedVals[$j];
-                    bd("$attrName --- $valueProbe");
                     $attrValue = $this->pullAnyValue($page, $attrName, $valueProbe, ['quoted' => true]);
                 }
 
@@ -343,6 +341,28 @@ class TextformatterFunkyFunctions extends Textformatter implements ConfigurableM
     }
 
 
+    /**
+     * pullAnyValue new
+     * 
+     */
+    // private function pullAnyValue(Page $page, string $keyProbe, string $valProbe, $options = []) {
+
+    //     // merge helper options
+    //     $defaults = ['quoted' => false, 'simple' =>  false, 'inner' => false];
+    //     $options = array_merge($defaults, $options);
+        
+    //     // strip quotes
+    //     if($options['quoted'] == true) {
+    //         $probeLen = strlen($probe);
+    //         $probe = substr($probe, 1, $probeLen - 2);
+    //     }
+
+    //     $fieldExists = $page->hasField($keyProbe);
+
+        
+    // }
+
+
 
     /**
      * pullAnyValue
@@ -354,7 +374,7 @@ class TextformatterFunkyFunctions extends Textformatter implements ConfigurableM
      * @param [type] $probe aka filter/selector/...
      * @return void
      */
-    private function pullAnyValue($page, $attrName, $probe, $options = []) {
+    private function pullAnyValue($page, $keyProbe, $probe, $options = []) {
         
         // merge helper options
         $defaults = ['quoted' => false, 'simple' =>  false, 'inner' => false];
@@ -369,23 +389,23 @@ class TextformatterFunkyFunctions extends Textformatter implements ConfigurableM
         // * //
 
         // 1 // attribute name is field? attribute value has inner field reference?
-        
-        $fieldExists = $page->hasField($attrName);
+
+        $fieldExists = $page->hasField($keyProbe);
         $innerFieldReference = $this->getInnerFieldReference($page, $probe);
         $valueProbe = null;
 
         // 1.1 // If there is an inner field reference, just return this one. Priority.
         if($innerFieldReference !== null) {
-            return $this->pullAnyValue($page, $innerFieldReference[0], $innerFieldReference[1], ['inner' => true]);
-        }
+                return $this->pullAnyValue($page, $innerFieldReference[0], $innerFieldReference[1], ['inner' => true]);
+            }
 
         // 1.2 // If the attribute name does not correspond to a field, just return the value probe.
         if($fieldExists === false) {
             return $probe;
-        } 
+        }
         
         // else // get field value for further filter trials
-        $valueProbe = $page->get($attrName);
+        $valueProbe = $page->get($keyProbe);
         
         // 2 // probe matches "access-indices pattern" like "1,2,5-7,10,14-" --> filter by indices, return value
         
